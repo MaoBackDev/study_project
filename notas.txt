@@ -1,0 +1,90 @@
+************************ FUNCTIONS VIEWS ******************************
+
+# LOGIN PAGE
+def login_page(request):
+
+    page = 'login'
+    if request.user.is_authenticated:
+       return HttpResponseRedirect(reverse_lazy('base:home')) 
+
+
+    # Se obtienen los valores enviados desde el formmulario a través del método POST
+    if request.method == 'POST':
+        username = request.POST.get('username').lower()
+        password = request.POST.get('password')
+
+        # Se obtiene el usuario desde la base de datos, si no existe se crea un mensaje de error usando el modulo de Django messages. se debe importar el módulo: from django.contrib import messages
+        try:
+            user = User.objects.get(username=username)
+        except:
+            messages.error(request, 'User does not exists')
+        
+        # Autenticación del usuario, se pasa el username y el password
+        user = authenticate(request, username=username, password=password)
+
+        # Si el paso anterior es válido se crea la sesión del usuario, en caso las credenciales no coincidan se crea un mensaje de error.
+        # Para realizar la autenticación importamos lo siguiente: from django.contrib.auth import authenticate, login, logout
+        
+        if user is not None:
+            login(request, user)
+            return HttpResponseRedirect(reverse_lazy('base:home'))
+        else:
+            messages.error(request, 'User or password does not exist')
+
+    context = {'page': page}
+    return render(request, 'base/login.html', context)
+
+
+
+# REGISTER PAGE
+def register_page(request):
+    form = UserCreationForm()
+
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+
+            # Usamos commit=False para realizar modificaciones a los atributos antes de realizar el guardado en la base de datos. Estos deben estar en una variable
+
+            user = form.save(commit=False)
+            user.username = user.username.lower()
+            user.save()
+
+            # Una vez se registra el usuario, se crea un login automático. Este es paso es opcional
+            login(request, user)
+
+            # Redirección del login
+            return HttpResponseRedirect(reverse_lazy('base:home'))
+        else:
+            messages.error(request, 'An error occurred during registration!!')
+
+    return render(request, 'base/login.html', {'form': form})
+
+
+# DETAIL ROOM
+def room(request, pk):
+    room = Room.objects.get(id=pk)
+
+    # room.message_set.all(): este método permite recuperar los objetos existentes en una relación de uno a muchos, En este ejemplo tenemos una sala de estudio que permite intercambiar mensajes entre usuarios, cada mensaje pertenece a una sala por lo cual, si uso el objeto del modelo principal uso el nombre de la clase en minúscula + _set.all() para realizar la relación inversa y recuperar los registros
+    
+    room_messages = room.message_set.all().order_by('-created')
+    participants = room.participants.all()
+
+    #  Creación de un mensaje a tráves del chat
+    if request.method == 'POST':
+        msg = Message.objects.create(
+            user=request.user,
+            room=room,
+            body=request.POST.get('body')
+        )
+
+        # Cada que un nuevo usuario realiza un comentario o envía un mensaje, se agrega automaticante como participante
+        room.participants.add(request.user)
+        return redirect('base:room', pk=room.id)
+
+    context = {
+        'room': room,
+        'room_messages': room_messages,
+        'participants': participants
+    }
+    return render(request, 'base/room.html', context)
